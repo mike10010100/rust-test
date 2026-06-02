@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  quality-gate:
+    name: Rust Quality Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt, llvm-tools-preview
+
+
+      - name: Enable Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install CI Cargo Utilities
+        run: |
+          # Install nextest, cargo-deny, cargo-audit, cargo-llvm-cov, and cargo-mutants
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz | tar -xzf - -C ~/.cargo/bin
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nextest-rs/nextest/releases/latest/download/nextest-bootstrap-cli-x86_64-unknown-linux-gnu.tar.gz | tar -xzf - -C ~/.cargo/bin
+          cargo install cargo-deny --locked || true
+          cargo install cargo-audit --locked || true
+          cargo install cargo-mutants --locked || true
+
+      - name: Enforce Code Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy Lints
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Dependency Policy Governance (cargo-deny)
+        run: cargo deny check
+
+      - name: Security Vulnerability Scan (cargo-audit)
+        run: cargo audit
+
+      - name: Run Test Suite (cargo-nextest)
+        run: cargo nextest run --all-features
+
+      - name: Generate Code Coverage (cargo-llvm-cov)
+        run: cargo llvm-cov --all-features --workspace --fail-under 95 --lcov --output-path lcov.info
+
+
+      - name: Run Mutation Testing Smoke Test (cargo-mutants)
+        run: |
+          # Run a quick smoke test of cargo-mutants limited to 10 mutations
+          # to keep CI speed high while verifying test effectiveness.
+          cargo mutants --limit 10

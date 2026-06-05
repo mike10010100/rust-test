@@ -103,12 +103,20 @@ mod tests {
         let limiter = RateLimiter::new(1, 10.0);
 
         let start = Instant::now();
-        limiter.acquire().await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), limiter.acquire())
+                .await
+                .is_ok()
+        );
         // First acquire should be immediate
         assert!(start.elapsed() < Duration::from_millis(50));
 
         // Second acquire must wait for refill (approx 100ms)
-        limiter.acquire().await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(250), limiter.acquire())
+                .await
+                .is_ok()
+        );
         let elapsed = start.elapsed();
         assert!(elapsed >= Duration::from_millis(90));
         assert!(elapsed < Duration::from_millis(150));
@@ -131,7 +139,11 @@ mod tests {
         // Wait duration should be 0.5 / 10.0 = 50ms.
         // If mutated to (+), needed = 1.0 + 0.5 = 1.5 tokens (150ms wait).
         let start = Instant::now();
-        limiter.acquire().await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(250), limiter.acquire())
+                .await
+                .is_ok()
+        );
         let elapsed = start.elapsed();
 
         assert!(elapsed >= Duration::from_millis(40));

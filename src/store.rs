@@ -15,7 +15,10 @@ pub trait JobStore: Send + Sync + 'static {
     fn insert(&self, job: JobMetadata) -> impl std::future::Future<Output = Result<()>> + Send;
 
     /// Retrieves metadata for a specific job.
-    fn get(&self, id: JobId) -> impl std::future::Future<Output = Result<Option<JobMetadata>>> + Send;
+    fn get(
+        &self,
+        id: JobId,
+    ) -> impl std::future::Future<Output = Result<Option<JobMetadata>>> + Send;
 
     /// Lists all jobs currently in the store.
     fn list_all(&self) -> impl std::future::Future<Output = Result<Vec<JobMetadata>>> + Send;
@@ -25,14 +28,18 @@ pub trait JobStore: Send + Sync + 'static {
 
     /// Transitions a job to the `Running` state and records start metadata.
     /// Returns the updated metadata.
-    fn start_run(&self, id: JobId) -> impl std::future::Future<Output = Result<JobMetadata>> + Send;
+    fn start_run(&self, id: JobId)
+    -> impl std::future::Future<Output = Result<JobMetadata>> + Send;
 
     /// Transitions a job from `Running` to either `Completed` or `Failed`.
     /// For periodic jobs, schedules the next execution time.
     /// Returns the updated metadata.
-    fn complete_run(&self, id: JobId, result: Result<(), String>) -> impl std::future::Future<Output = Result<JobMetadata>> + Send;
+    fn complete_run(
+        &self,
+        id: JobId,
+        result: Result<(), String>,
+    ) -> impl std::future::Future<Output = Result<JobMetadata>> + Send;
 }
-
 
 /// An in-memory, thread-safe implementation of `JobStore`.
 #[derive(Debug, Default, Clone)]
@@ -93,7 +100,6 @@ impl JobStore for InMemoryJobStore {
         Ok(runnable)
     }
 
-
     async fn start_run(&self, id: JobId) -> Result<JobMetadata> {
         let mut jobs = self.jobs.write().await;
         let job = jobs.get_mut(&id).ok_or(SchedulerError::JobNotFound(id))?;
@@ -128,10 +134,8 @@ impl JobStore for InMemoryJobStore {
             job.next_run_time = Some(base_time + duration);
         }
 
-
         let result_job = job.clone();
         drop(jobs);
         Ok(result_job)
     }
 }
-

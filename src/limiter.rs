@@ -16,14 +16,15 @@ struct TokenBucket {
 impl TokenBucket {
     fn refill(&mut self) {
         let now = Instant::now();
-        let elapsed = now.saturating_duration_since(self.last_refill).as_secs_f64();
+        let elapsed = now
+            .saturating_duration_since(self.last_refill)
+            .as_secs_f64();
 
         self.last_refill = now;
         let new_tokens = elapsed * self.refill_rate;
         self.tokens = (self.tokens + new_tokens).min(self.capacity);
     }
 }
-
 
 /// A thread-safe, asynchronous rate limiter.
 /// It uses a token bucket algorithm to control the rate of job dispatches.
@@ -137,5 +138,3 @@ mod tests {
         assert!(elapsed < Duration::from_millis(100));
     }
 }
-
-

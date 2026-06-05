@@ -1,10 +1,9 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
 
 use rust_test::{JobSchedule, JobStatus, RateLimiter, Scheduler};
-
 
 #[tokio::test]
 async fn test_immediate_job_execution() {
@@ -135,7 +134,11 @@ async fn test_panic_resilience() {
     sleep(Duration::from_millis(50)).await;
 
     // First job status should be Failed with panic message
-    let panic_status = scheduler.get_job_status(panic_job_id).await.unwrap().unwrap();
+    let panic_status = scheduler
+        .get_job_status(panic_job_id)
+        .await
+        .unwrap()
+        .unwrap();
     match panic_status {
         JobStatus::Failed(err) => {
             assert!(err.contains("Task panicked: Expected test panic"));
@@ -145,7 +148,11 @@ async fn test_panic_resilience() {
 
     // Second job must have finished successfully, showing workers survived
     assert_eq!(counter.load(Ordering::SeqCst), 1);
-    let normal_status = scheduler.get_job_status(normal_job_id).await.unwrap().unwrap();
+    let normal_status = scheduler
+        .get_job_status(normal_job_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(normal_status, JobStatus::Completed);
 
     scheduler.shutdown().await.unwrap();
@@ -272,7 +279,11 @@ async fn test_scheduler_no_drift() {
     scheduler.shutdown().await.unwrap();
 
     let times = run_times.lock().await;
-    assert!(times.len() >= 4, "Expected at least 4 runs, got {}", times.len());
+    assert!(
+        times.len() >= 4,
+        "Expected at least 4 runs, got {}",
+        times.len()
+    );
 
     let start = times[0];
     for (i, &time) in times.iter().enumerate().skip(1) {
@@ -280,13 +291,15 @@ async fn test_scheduler_no_drift() {
         let actual_elapsed = time.duration_since(start);
         let diff = actual_elapsed.abs_diff(expected_elapsed);
 
-
         // Allow up to 10ms of scheduler jitter (very safe),
         // but if there was drift, the 4th run (index 3) would have drifted by at least 3 * 8ms = 24ms.
         assert!(
             diff < Duration::from_millis(10),
             "Run {} drifted by {:?}. Expected elapsed: {:?}, actual: {:?}",
-            i, diff, expected_elapsed, actual_elapsed
+            i,
+            diff,
+            expected_elapsed,
+            actual_elapsed
         );
     }
 }
@@ -313,7 +326,9 @@ async fn test_shutdown_timeout_aborts_jobs() {
 
     sleep(Duration::from_millis(20)).await;
 
-    let shutdown_res = scheduler.shutdown_with_timeout(Duration::from_millis(50)).await;
+    let shutdown_res = scheduler
+        .shutdown_with_timeout(Duration::from_millis(50))
+        .await;
 
     assert!(
         matches!(shutdown_res, Err(rust_test::SchedulerError::Timeout)),
@@ -322,7 +337,11 @@ async fn test_shutdown_timeout_aborts_jobs() {
     );
 
     sleep(Duration::from_millis(500)).await;
-    assert_eq!(job_completed.load(Ordering::SeqCst), 0, "Aborted job should not complete");
+    assert_eq!(
+        job_completed.load(Ordering::SeqCst),
+        0,
+        "Aborted job should not complete"
+    );
 }
 
 #[tokio::test]
@@ -374,5 +393,3 @@ async fn test_concurrent_job_registration() {
 
     scheduler.shutdown().await.unwrap();
 }
-
-

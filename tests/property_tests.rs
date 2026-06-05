@@ -1,6 +1,6 @@
 use proptest::prelude::*;
-use std::time::Duration;
 use rust_test::{JobId, JobMetadata, JobSchedule, JobStatus};
+use std::time::Duration;
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(500))]

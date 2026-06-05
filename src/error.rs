@@ -1,7 +1,7 @@
 //! Error types for the task scheduler.
 
-use thiserror::Error;
 use crate::job::JobId;
+use thiserror::Error;
 
 /// Result type alias for scheduler operations.
 pub type Result<T, E = SchedulerError> = std::result::Result<T, E>;

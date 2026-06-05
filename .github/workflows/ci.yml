@@ -28,13 +28,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install CI Cargo Utilities
-        run: |
-          # Install nextest, cargo-deny, cargo-audit, cargo-llvm-cov, and cargo-mutants
-          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz | tar -xzf - -C ~/.cargo/bin
-          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nextest-rs/nextest/releases/latest/download/nextest-bootstrap-cli-x86_64-unknown-linux-gnu.tar.gz | tar -xzf - -C ~/.cargo/bin
-          cargo install cargo-deny --locked || true
-          cargo install cargo-audit --locked || true
-          cargo install cargo-mutants --locked || true
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest,cargo-llvm-cov,cargo-deny,cargo-audit,cargo-mutants
 
       - name: Enforce Code Formatting
         run: cargo fmt --all -- --check

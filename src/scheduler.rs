@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
@@ -25,7 +25,6 @@ pub struct Scheduler<S = InMemoryJobStore> {
     shutdown_token: CancellationToken,
     runner_handle: Arc<Mutex<Option<RunnerHandle>>>,
 }
-
 
 /// The execution runner for the scheduler, containing the event loop.
 /// This should be started in a background task.
@@ -87,7 +86,6 @@ impl<S: JobStore + Clone> Scheduler<S> {
         drop(handle_guard);
         Ok(())
     }
-
 
     /// Registers a new job and schedule with the scheduler.
     ///
@@ -158,7 +156,6 @@ impl<S: JobStore + Clone> Scheduler<S> {
         Ok(())
     }
 
-
     /// Initiates a graceful shutdown of the scheduler and awaits completion up to the specified timeout.
     /// If the timeout expires, any running jobs are aborted.
     ///
@@ -189,7 +186,6 @@ impl<S: JobStore + Clone> Scheduler<S> {
 
         Ok(())
     }
-
 }
 
 impl Scheduler<InMemoryJobStore> {
@@ -227,7 +223,6 @@ impl<S: JobStore + Clone> SchedulerRunner<S> {
                 |time| time.saturating_duration_since(Instant::now()),
             );
 
-
             let sleep_fut = tokio::time::sleep(sleep_duration);
 
             tokio::select! {
@@ -248,7 +243,6 @@ impl<S: JobStore + Clone> SchedulerRunner<S> {
                     }
                 }
             }
-
         }
 
         // Graceful shutdown phase: stop accepting new jobs, finish current ones
@@ -268,11 +262,12 @@ impl<S: JobStore + Clone> SchedulerRunner<S> {
             }
 
             // Check rate limiter
-            if let Some(ref limiter) = self.rate_limiter && !limiter.try_acquire().await {
+            if let Some(ref limiter) = self.rate_limiter
+                && !limiter.try_acquire().await
+            {
                 // Rate limit reached. Do not dispatch further in this tick.
                 break;
             }
-
 
             // Fetch ready jobs from storage
             let runnable = self.store.get_runnable_jobs().await?;
@@ -319,7 +314,6 @@ impl<S: JobStore + Clone> SchedulerRunner<S> {
                         Err(format!("Task panicked: {msg}"))
                     }
                 };
-
 
                 // Record final execution state
                 let _ = store.complete_run(job_id, outcome).await;

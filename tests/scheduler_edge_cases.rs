@@ -2,14 +2,14 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 use rust_test::{
-    InMemoryJobStore, JobId, JobMetadata, JobSchedule, JobStatus, JobStore,
-    RateLimiter, Scheduler, SchedulerError,
+    InMemoryJobStore, JobId, JobMetadata, JobSchedule, JobStatus, JobStore, RateLimiter, Scheduler,
+    SchedulerError,
 };
 
 #[tokio::test]
 async fn test_cannot_start_scheduler_twice() {
     let (scheduler, runner) = Scheduler::new_in_memory(2, None);
-    
+
     // First start should succeed
     scheduler.start(runner).await.unwrap();
 
@@ -60,12 +60,14 @@ async fn test_missing_task_implementation() {
 #[tokio::test]
 async fn test_shutdown_without_starting() {
     let (scheduler, _runner) = Scheduler::new_in_memory(2, None);
-    
+
     // Shutdown without starting should return Ok(()) immediately
     let res = scheduler.shutdown().await;
     assert!(res.is_ok());
 
-    let res_timeout = scheduler.shutdown_with_timeout(Duration::from_millis(100)).await;
+    let res_timeout = scheduler
+        .shutdown_with_timeout(Duration::from_millis(100))
+        .await;
     assert!(res_timeout.is_ok());
 }
 
@@ -86,7 +88,9 @@ async fn test_shutdown_with_timeout_succeeds_fast() {
     sleep(Duration::from_millis(10)).await;
 
     // Shutdown with timeout should succeed immediately since no jobs are running
-    let res = scheduler.shutdown_with_timeout(Duration::from_secs(1)).await;
+    let res = scheduler
+        .shutdown_with_timeout(Duration::from_secs(1))
+        .await;
     assert!(res.is_ok());
 }
 
@@ -111,7 +115,7 @@ fn test_rate_limiter_negative_rate_panics() {
 #[test]
 fn test_error_formatting() {
     let job_id = JobId::new();
-    
+
     assert_eq!(
         format!("{}", SchedulerError::JobNotFound(job_id)),
         format!("Job not found: {job_id}")
@@ -137,7 +141,10 @@ fn test_error_formatting() {
         "Job execution timed out"
     );
     assert_eq!(
-        format!("{}", SchedulerError::InvalidSchedule("bad cron".to_string())),
+        format!(
+            "{}",
+            SchedulerError::InvalidSchedule("bad cron".to_string())
+        ),
         "Invalid schedule: bad cron"
     );
     assert_eq!(
@@ -206,16 +213,26 @@ async fn test_task_returns_error() {
 struct PanickingRunnerStore;
 
 impl JobStore for PanickingRunnerStore {
-    async fn insert(&self, _job: JobMetadata) -> Result<(), SchedulerError> { Ok(()) }
-    async fn get(&self, _id: JobId) -> Result<Option<JobMetadata>, SchedulerError> { Ok(None) }
-    async fn list_all(&self) -> Result<Vec<JobMetadata>, SchedulerError> { Ok(vec![]) }
+    async fn insert(&self, _job: JobMetadata) -> Result<(), SchedulerError> {
+        Ok(())
+    }
+    async fn get(&self, _id: JobId) -> Result<Option<JobMetadata>, SchedulerError> {
+        Ok(None)
+    }
+    async fn list_all(&self) -> Result<Vec<JobMetadata>, SchedulerError> {
+        Ok(vec![])
+    }
     async fn get_runnable_jobs(&self) -> Result<Vec<JobId>, SchedulerError> {
         panic!("Simulated runner store panic");
     }
     async fn start_run(&self, _id: JobId) -> Result<JobMetadata, SchedulerError> {
         Err(SchedulerError::StoreError("not implemented".to_string()))
     }
-    async fn complete_run(&self, _id: JobId, _result: Result<(), String>) -> Result<JobMetadata, SchedulerError> {
+    async fn complete_run(
+        &self,
+        _id: JobId,
+        _result: Result<(), String>,
+    ) -> Result<JobMetadata, SchedulerError> {
         Err(SchedulerError::StoreError("not implemented".to_string()))
     }
 }
@@ -249,7 +266,9 @@ async fn test_runner_panics_on_shutdown_timeout() {
     sleep(Duration::from_millis(30)).await;
 
     // Shutdown with timeout should join the panicked task and return a ChannelError
-    let shutdown_res = scheduler.shutdown_with_timeout(Duration::from_secs(1)).await;
+    let shutdown_res = scheduler
+        .shutdown_with_timeout(Duration::from_secs(1))
+        .await;
     match shutdown_res {
         Err(SchedulerError::ChannelError(msg)) => {
             assert!(msg.contains("failed to join"));
@@ -287,7 +306,11 @@ impl JobStore for PanickingCompleteStore {
     async fn start_run(&self, id: JobId) -> Result<JobMetadata, SchedulerError> {
         self.inner.start_run(id).await
     }
-    async fn complete_run(&self, _id: JobId, _result: Result<(), String>) -> Result<JobMetadata, SchedulerError> {
+    async fn complete_run(
+        &self,
+        _id: JobId,
+        _result: Result<(), String>,
+    ) -> Result<JobMetadata, SchedulerError> {
         panic!("Simulated complete_run panic");
     }
 }
@@ -365,7 +388,11 @@ impl JobStore for FailingJobStore {
         }
         self.inner.start_run(id).await
     }
-    async fn complete_run(&self, id: JobId, result: Result<(), String>) -> Result<JobMetadata, SchedulerError> {
+    async fn complete_run(
+        &self,
+        id: JobId,
+        result: Result<(), String>,
+    ) -> Result<JobMetadata, SchedulerError> {
         if self.fail_complete {
             return Err(SchedulerError::StoreError("complete failed".to_string()));
         }
@@ -379,7 +406,9 @@ async fn test_failing_store_insert() {
     store.fail_insert = true;
     let (scheduler, _runner) = Scheduler::new(store, 2, None);
 
-    let add_res = scheduler.add_job(JobSchedule::Immediate, || async { Ok(()) }).await;
+    let add_res = scheduler
+        .add_job(JobSchedule::Immediate, || async { Ok(()) })
+        .await;
     assert!(matches!(add_res, Err(SchedulerError::StoreError(_))));
 }
 
@@ -402,7 +431,9 @@ async fn test_failing_store_list() {
 
     sleep(Duration::from_millis(30)).await;
 
-    let shutdown_res = scheduler.shutdown_with_timeout(Duration::from_secs(1)).await;
+    let shutdown_res = scheduler
+        .shutdown_with_timeout(Duration::from_secs(1))
+        .await;
     assert!(matches!(shutdown_res, Err(SchedulerError::StoreError(_))));
 }
 
@@ -506,6 +537,3 @@ async fn test_task_panic_with_any() {
 
     scheduler.shutdown().await.unwrap();
 }
-
-
-

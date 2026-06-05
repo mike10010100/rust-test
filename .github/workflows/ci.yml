@@ -53,6 +53,6 @@ jobs:
 
       - name: Run Mutation Testing Smoke Test (cargo-mutants)
         run: |
-          # Run a quick smoke test of cargo-mutants limited to 10 mutations
+          # Run a quick smoke test of cargo-mutants limited to a single file
           # to keep CI speed high while verifying test effectiveness.
-          cargo mutants --max-mutants 10
+          cargo mutants --file src/limiter.rs

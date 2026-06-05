@@ -55,4 +55,4 @@ jobs:
         run: |
           # Run a quick smoke test of cargo-mutants limited to 10 mutations
           # to keep CI speed high while verifying test effectiveness.
-          cargo mutants --limit 10
+          cargo mutants --max-mutants 10

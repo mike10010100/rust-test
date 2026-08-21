@@ -1,39 +1,95 @@
-# Agent Coding & Handover Guide
+# 🤖 Agent Coding & Engineering Handover Guide
 
-Welcome, Agent! This document is designed for AI coding assistants (like yourself) working on this codebase. It provides context on the system architecture, code style mandates, verification commands, and guidelines for adding new features.
-
----
-
-## 1. Core Principles (Non-Negotiable)
-
-To maintain the extreme quality and stability of this project, you must adhere to the following rules:
-
-1. **Zero Unsafe Code**: The crate is compiled with `#![forbid(unsafe_code)]` in the crate root ([src/lib.rs](src/lib.rs)). Never attempt to bypass this.
-2. **Zero Production Panics**: Never use `.unwrap()`, `.expect()`, `panic!`, `todo!`, or `unimplemented!` in production modules. All errors must use typed variants of `SchedulerError` in [src/error.rs](src/error.rs) and bubble up as a `Result`.
-3. **Strict Lints**: All target builds must compile clean with zero Clippy warnings under the pedantic and nursery rules defined in [src/lib.rs](src/lib.rs).
-4. **Concurrency Safety**: Always verify that shared state is protected by thread-safe primitives (like `tokio::sync::RwLock` or `tokio::sync::Mutex`) and that lock guards are dropped early (`drop(guard)`) before long async yields (such as `.await`) to prevent deadlocks and resource contention.
+Welcome, Agent! This document is designed specifically for AI coding assistants (Antigravity, Cursor, Claude, Copilot, etc.) interacting with this codebase.
 
 ---
 
-## 2. Architecture Quick Reference
+## 🎯 Repository Purpose & Agent Context
 
-* **[`Scheduler`](src/scheduler.rs#L18)**: The cloneable user-facing handle. It registers job metadata into the store, inserts the executable task closure into the registry, and signals the runner loop.
-* **[`SchedulerRunner`](src/scheduler.rs#L28)**: The background driver task. It polls for ready jobs, manages concurrency limits using `tokio::task::JoinSet`, applies `RateLimiter` limits, and captures user-task panics using `catch_unwind`.
-* **[`JobStore`](src/store.rs#L13)**: An abstract storage trait using desugared async signatures returning `Send` futures to prevent compiler thread-safety errors. Implemented as `InMemoryJobStore`.
-* **[`RateLimiter`](src/limiter.rs#L24)**: A thread-safe, asynchronous token-bucket rate limiter.
+**This repository is an intentional reference blueprint and proof-of-concept for zero-crash, production-grade Rust systems.** 
 
----
+While the codebase implements a concrete **Async Task Scheduler & Token-Bucket Rate Limiter**, its primary reason for existing is to demonstrate, benchmark, and preserve tier-1 Rust stability, defensive concurrency, and comprehensive QA toolchain integration.
 
-## 3. Workflow & Verification Commands
-
-Before concluding any work, you **must** execute:
-* **Verify Code Style**: `cargo fmt --all -- --check`
-* **Verify Lints**: `cargo clippy --all-targets --all-features -- -D warnings`
-* **Verify Tests**: `cargo test` (or `cargo nextest run`)
+When working in this repository:
+- Treat every pattern as a strict standard, not an incidental implementation detail.
+- Never lower quality gates, weaken lint rules, or bypass defensive error handling for convenience.
+- Any new features, modules, or refactors must adhere to the same uncompromising resilience standard.
 
 ---
 
-## 4. Reference Documentation
+## 🛡️ Core Non-Negotiable Invariants
 
-For detailed guides on QA tooling configurations (such as cargo-deny, cargo-audit, cargo-llvm-cov, and cargo-mutants), refer to **[TOOLING.md](TOOLING.md)**.
+To preserve the extreme quality of this project, you **must** strictly adhere to the following rules:
 
+### 1. Zero Unsafe Code
+The crate root ([`src/lib.rs`](src/lib.rs)) enforces `#![forbid(unsafe_code)]`. Never attempt to use `unsafe`, weaken this attribute, or introduce dependencies that circumvent compiler safety guarantees.
+
+### 2. Zero Production Panics
+- **Banned in production**: `.unwrap()`, `.expect()`, `panic!`, `todo!`, `unimplemented!`.
+- All fallible operations must return a strongly typed `Result<T, SchedulerError>` using variants defined in [`src/error.rs`](src/error.rs).
+- Use `?`, `match`, or `if let` to bubble errors to callers.
+
+### 3. Strict Linter Compliance
+All targets must compile with zero warnings under `clippy::all`, `clippy::pedantic`, and `clippy::nursery` rules.
+
+### 4. Defensive Concurrency & Time
+- **Clock-Warp Safety**: Always compute elapsed time using `now.saturating_duration_since(earlier)`. Never use raw `.duration_since()` as monotonic clocks can jump backwards under VM or NTP syncs.
+- **Drift-Free Scheduling**: Recurring tasks must calculate next runs relative to the previous anchor timestamp, not `Instant::now()`.
+- **Async Mutex Guard Drops**: When holding a `tokio::sync::Mutex` or `RwLock`, always `drop(guard)` **before** any `.await`, `sleep()`, or long I/O to prevent cooperative task starvation.
+- **Task Leak Prevention**: Always attach an explicit `AbortHandle` to long-running tasks wrapped in `tokio::time::timeout`. Dropping a `JoinHandle` on timeout does not abort background work.
+- **Panic Boundaries**: Worker tasks executing foreign or user-supplied closures must wrap execution in `std::panic::AssertUnwindSafe(...).catch_unwind()`.
+
+### 5. Zero-Cost Future Desugaring
+Traits with async methods (like [`JobStore`](src/store.rs#L13)) should use manual return-position `impl Future<Output = ...> + Send` desugaring rather than heap-allocating `#[async_trait]` macros.
+
+---
+
+## 🏗️ Architecture Quick Reference
+
+| Component | File | Responsibility |
+| :--- | :--- | :--- |
+| **`Scheduler`** | [`src/scheduler.rs`](src/scheduler.rs#L18) | Cloneable, thread-safe user handle. Registers metadata, stores tasks, notifies runner loop. |
+| **`SchedulerRunner`** | [`src/scheduler.rs`](src/scheduler.rs#L28) | Background event loop. Manages `JoinSet` concurrency limits, rate limiting, and panic capture. |
+| **`JobStore`** | [`src/store.rs`](src/store.rs#L13) | Zero-overhead abstract storage trait. Implemented as [`InMemoryJobStore`](src/store.rs#L27). |
+| **`RateLimiter`** | [`src/limiter.rs`](src/limiter.rs#L32) | Asynchronous token-bucket rate limiter with lock-drop safety. |
+| **`SchedulerError`** | [`src/error.rs`](src/error.rs#L10) | Comprehensive domain error enum powered by `thiserror`. |
+
+---
+
+## 🧪 Testing & Verification Standard for Agents
+
+Whenever you introduce a new feature or modify existing logic:
+1. **Unit & Edge-Case Tests**: Add corresponding test cases in [`tests/`](tests/) covering both success paths and failure injection paths (e.g., using `FailingJobStore`).
+2. **Property Tests**: If manipulating time, intervals, or state transformations, add a `proptest!` block in [`tests/property_tests.rs`](tests/property_tests.rs).
+3. **Mutation Testing**: Ensure any logic assertions are tight enough that `cargo mutants` cannot introduce undetected mutations.
+
+---
+
+## ⚡ Mandatory Pre-Completion Checklist
+
+Before reporting your work as done, you **must execute and pass every step** of this pipeline:
+
+```bash
+# 1. Check code formatting
+cargo fmt --all -- --check
+
+# 2. Check strict clippy rules (must have 0 warnings)
+cargo clippy --all-targets --all-features -- -D warnings
+
+# 3. Run all tests
+cargo test
+
+# 4. (Optional / recommended if available) Isolated process tests
+cargo nextest run
+
+# 5. Dependency security & policy scan
+cargo deny check
+```
+
+---
+
+## 📚 Related Documentation
+
+- **[README.md](README.md)**: High-level overview and pattern summary table.
+- **[BEST_PRACTICES.md](BEST_PRACTICES.md)**: Exhaustive architectural deep-dive into each stability design pattern.
+- **[TOOLING.md](TOOLING.md)**: QA toolchain setup and CI workflow guide.

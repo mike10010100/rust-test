@@ -15,6 +15,92 @@ use crate::store::{InMemoryJobStore, JobStore};
 /// A handle to the scheduler runner task.
 pub type RunnerHandle = tokio::task::JoinHandle<Result<(), SchedulerError>>;
 
+/// A builder for constructing and configuring a [`Scheduler`] and its [`SchedulerRunner`].
+///
+/// # Examples
+///
+/// ```rust
+/// use rust_best_practices::scheduler::SchedulerBuilder;
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let (scheduler, _runner) = SchedulerBuilder::new()
+///     .max_concurrent_jobs(8)
+///     .rate_limiter(10, 5.0)?
+///     .build();
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Debug, Clone)]
+pub struct SchedulerBuilder<S = InMemoryJobStore> {
+    store: S,
+    max_concurrent_jobs: usize,
+    rate_limiter: Option<RateLimiter>,
+}
+
+impl SchedulerBuilder<InMemoryJobStore> {
+    /// Creates a new default `SchedulerBuilder` with an [`InMemoryJobStore`].
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            store: InMemoryJobStore::new(),
+            max_concurrent_jobs: 16,
+            rate_limiter: None,
+        }
+    }
+}
+
+impl Default for SchedulerBuilder<InMemoryJobStore> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<S: JobStore + Clone> SchedulerBuilder<S> {
+    /// Configures the storage backend for the scheduler.
+    #[must_use]
+    pub fn with_store<NewStore: JobStore + Clone>(
+        self,
+        store: NewStore,
+    ) -> SchedulerBuilder<NewStore> {
+        SchedulerBuilder {
+            store,
+            max_concurrent_jobs: self.max_concurrent_jobs,
+            rate_limiter: self.rate_limiter,
+        }
+    }
+
+    /// Sets the maximum number of concurrent jobs that can be executed simultaneously.
+    #[must_use]
+    pub const fn max_concurrent_jobs(mut self, max: usize) -> Self {
+        self.max_concurrent_jobs = max;
+        self
+    }
+
+    /// Attaches an existing [`RateLimiter`] to the scheduler.
+    #[must_use]
+    pub fn with_rate_limiter(mut self, limiter: RateLimiter) -> Self {
+        self.rate_limiter = Some(limiter);
+        self
+    }
+
+    /// Configures rate limiting parameters directly.
+    ///
+    /// # Errors
+    /// Returns `SchedulerError::InvalidConfig` if rate limiter parameters are invalid.
+    pub fn rate_limiter(mut self, capacity: usize, refill_rate: f64) -> Result<Self> {
+        let limiter = RateLimiter::try_new(capacity, refill_rate)?;
+        self.rate_limiter = Some(limiter);
+        Ok(self)
+    }
+
+    /// Builds the configured [`Scheduler`] and [`SchedulerRunner`].
+    #[must_use]
+    pub fn build(self) -> (Scheduler<S>, SchedulerRunner<S>) {
+        Scheduler::new(self.store, self.max_concurrent_jobs, self.rate_limiter)
+    }
+}
+
 /// A thread-safe handle to the task scheduler.
 /// Clones of this handle share the same underlying job store and task registry.
 #[derive(Clone)]
@@ -39,6 +125,18 @@ pub struct SchedulerRunner<S> {
 
 impl<S: JobStore + Clone> Scheduler<S> {
     /// Creates a new `Scheduler` and its associated `SchedulerRunner`.
+    ///
+    /// For a fluent configuration builder, see [`SchedulerBuilder`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rust_best_practices::scheduler::Scheduler;
+    /// use rust_best_practices::store::InMemoryJobStore;
+    ///
+    /// let store = InMemoryJobStore::new();
+    /// let (scheduler, _runner) = Scheduler::new(store, 4, None);
+    /// ```
     #[must_use]
     pub fn new(
         store: S,
@@ -73,6 +171,9 @@ impl<S: JobStore + Clone> Scheduler<S> {
     ///
     /// # Errors
     /// Returns an error if the scheduler is already running.
+    ///
+    /// # Cancellation Safety
+    /// This method is **cancellation safe**.
     pub async fn start(&self, mut runner: SchedulerRunner<S>) -> Result<()> {
         let mut handle_guard = self.runner_handle.lock().await;
         if handle_guard.is_some() {
@@ -91,12 +192,33 @@ impl<S: JobStore + Clone> Scheduler<S> {
     ///
     /// # Errors
     /// Returns an error if the store fails to register the job.
+    ///
+    /// # Cancellation Safety
+    /// This method is **cancellation safe**.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rust_best_practices::scheduler::Scheduler;
+    /// use rust_best_practices::job::JobSchedule;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let (scheduler, _runner) = Scheduler::new_in_memory(2, None);
+    /// let job_id = scheduler
+    ///     .add_job(JobSchedule::Immediate, || async { Ok(()) })
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn add_job<T>(&self, schedule: JobSchedule, task: T) -> Result<JobId>
     where
         T: Task,
     {
         let id = JobId::new();
         let metadata = JobMetadata::new(id, schedule);
+
+        log::debug!("Adding job {id} to scheduler");
 
         // Save metadata to store
         self.store.insert(metadata).await?;
@@ -116,6 +238,9 @@ impl<S: JobStore + Clone> Scheduler<S> {
     ///
     /// # Errors
     /// Returns an error if the store cannot be queried.
+    ///
+    /// # Cancellation Safety
+    /// This method is **cancellation safe**.
     pub async fn get_job_status(&self, id: JobId) -> Result<Option<JobStatus>> {
         if let Some(metadata) = self.store.get(id).await? {
             Ok(Some(metadata.status))
@@ -128,6 +253,9 @@ impl<S: JobStore + Clone> Scheduler<S> {
     ///
     /// # Errors
     /// Returns an error if the store cannot be queried.
+    ///
+    /// # Cancellation Safety
+    /// This method is **cancellation safe**.
     pub async fn get_job_metadata(&self, id: JobId) -> Result<Option<JobMetadata>> {
         self.store.get(id).await
     }
@@ -136,7 +264,11 @@ impl<S: JobStore + Clone> Scheduler<S> {
     ///
     /// # Errors
     /// Returns an error if the runner task failed during shutdown.
+    ///
+    /// # Cancellation Safety
+    /// This method is **cancellation safe**.
     pub async fn shutdown(&self) -> Result<()> {
+        log::info!("Initiating graceful scheduler shutdown");
         self.shutdown_token.cancel();
 
         let mut runner_guard = self.runner_handle.lock().await;
@@ -161,7 +293,11 @@ impl<S: JobStore + Clone> Scheduler<S> {
     ///
     /// # Errors
     /// Returns `SchedulerError::Timeout` if the timeout expires, or other scheduling errors.
+    ///
+    /// # Cancellation Safety
+    /// This method is **cancellation safe**.
     pub async fn shutdown_with_timeout(&self, timeout: Duration) -> Result<()> {
+        log::info!("Initiating graceful scheduler shutdown with timeout {timeout:?}");
         self.shutdown_token.cancel();
 
         let mut runner_guard = self.runner_handle.lock().await;
@@ -178,6 +314,7 @@ impl<S: JobStore + Clone> Scheduler<S> {
                     )));
                 }
                 Err(_) => {
+                    log::warn!("Shutdown timed out; aborting background runner");
                     abort_handle.abort();
                     return Err(SchedulerError::Timeout);
                 }
@@ -190,6 +327,14 @@ impl<S: JobStore + Clone> Scheduler<S> {
 
 impl Scheduler<InMemoryJobStore> {
     /// Helper to create a scheduler backed by the standard `InMemoryJobStore`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rust_best_practices::scheduler::Scheduler;
+    ///
+    /// let (scheduler, _runner) = Scheduler::new_in_memory(4, None);
+    /// ```
     #[must_use]
     pub fn new_in_memory(
         max_concurrent_jobs: usize,
@@ -219,7 +364,7 @@ impl<S: JobStore + Clone> SchedulerRunner<S> {
             // Determine when the next scheduled job is ready
             let next_wakeup = self.get_next_wakeup_time().await?;
             let sleep_duration = next_wakeup.map_or_else(
-                || Duration::from_hours(1),
+                || Duration::from_secs(3600),
                 |time| time.saturating_duration_since(Instant::now()),
             );
 
@@ -239,7 +384,7 @@ impl<S: JobStore + Clone> SchedulerRunner<S> {
                     // Task finished executing
                     if let Err(err) = res && err.is_panic() {
                         // The inner task future catches panic, but if tokio worker itself fails:
-                        eprintln!("Tokio task worker panic: {err:?}");
+                        log::error!("Tokio task worker panic: {err:?}");
                     }
                 }
             }
@@ -295,6 +440,7 @@ impl<S: JobStore + Clone> SchedulerRunner<S> {
 
             // Transition job state to Running
             self.store.start_run(job_id).await?;
+            log::debug!("Dispatched job {job_id} to worker task pool");
 
             // Spawn execution with panic-catching wrapper
             let store = self.store.clone();
@@ -303,14 +449,21 @@ impl<S: JobStore + Clone> SchedulerRunner<S> {
                 let catch_fut = std::panic::AssertUnwindSafe(task.execute()).catch_unwind();
 
                 let outcome = match catch_fut.await {
-                    Ok(Ok(())) => Ok(()),
-                    Ok(Err(err_msg)) => Err(err_msg),
+                    Ok(Ok(())) => {
+                        log::info!("Task {job_id} completed successfully");
+                        Ok(())
+                    }
+                    Ok(Err(err_msg)) => {
+                        log::warn!("Task {job_id} failed with error: {err_msg}");
+                        Err(err_msg)
+                    }
                     Err(panic_payload) => {
                         let msg = panic_payload
                             .downcast_ref::<&str>()
                             .map(|s| (*s).to_string())
                             .or_else(|| panic_payload.downcast_ref::<String>().cloned())
                             .unwrap_or_else(|| "Unknown panic".to_string());
+                        log::error!("Task {job_id} panicked: {msg}");
                         Err(format!("Task panicked: {msg}"))
                     }
                 };

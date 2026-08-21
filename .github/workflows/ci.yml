@@ -47,6 +47,9 @@ jobs:
       - name: Run Test Suite (cargo-nextest)
         run: cargo nextest run --all-features
 
+      - name: Run Documentation Tests
+        run: cargo test --doc
+
       - name: Generate Code Coverage (cargo-llvm-cov)
         run: cargo llvm-cov --all-features --workspace --fail-under-lines 95 --lcov --output-path lcov.info
 

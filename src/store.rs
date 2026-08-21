@@ -63,6 +63,7 @@ impl JobStore for InMemoryJobStore {
         if jobs.contains_key(&job.id) {
             return Err(SchedulerError::DuplicateJob(job.id));
         }
+        log::trace!("Stored new job metadata for job {}", job.id);
         jobs.insert(job.id, job);
         drop(jobs);
         Ok(())

@@ -48,10 +48,11 @@ Traits with async methods (like [`JobStore`](src/store.rs#L13)) should use manua
 
 | Component | File | Responsibility |
 | :--- | :--- | :--- |
-| **`Scheduler`** | [`src/scheduler.rs`](src/scheduler.rs#L18) | Cloneable, thread-safe user handle. Registers metadata, stores tasks, notifies runner loop. |
-| **`SchedulerRunner`** | [`src/scheduler.rs`](src/scheduler.rs#L28) | Background event loop. Manages `JoinSet` concurrency limits, rate limiting, and panic capture. |
-| **`JobStore`** | [`src/store.rs`](src/store.rs#L13) | Zero-overhead abstract storage trait. Implemented as [`InMemoryJobStore`](src/store.rs#L27). |
-| **`RateLimiter`** | [`src/limiter.rs`](src/limiter.rs#L32) | Asynchronous token-bucket rate limiter with lock-drop safety. |
+| **`Scheduler`** | [`src/scheduler.rs`](src/scheduler.rs#L108) | Cloneable, thread-safe user handle. Registers metadata, stores tasks, notifies runner loop. |
+| **`SchedulerBuilder`** | [`src/scheduler.rs`](src/scheduler.rs#L34) | Fluent, type-safe builder for configuring and constructing schedulers. |
+| **`SchedulerRunner`** | [`src/scheduler.rs`](src/scheduler.rs#L117) | Background event loop. Manages `JoinSet` concurrency limits, rate limiting, and panic capture. |
+| **`JobStore`** | [`src/store.rs`](src/store.rs#L13) | Zero-overhead abstract storage trait. Implemented as [`InMemoryJobStore`](src/store.rs#L46). |
+| **`RateLimiter`** | [`src/limiter.rs`](src/limiter.rs#L44) | Asynchronous token-bucket rate limiter with lock-drop safety and `try_new`. |
 | **`SchedulerError`** | [`src/error.rs`](src/error.rs#L10) | Comprehensive domain error enum powered by `thiserror`. |
 
 ---
@@ -60,8 +61,9 @@ Traits with async methods (like [`JobStore`](src/store.rs#L13)) should use manua
 
 Whenever you introduce a new feature or modify existing logic:
 1. **Unit & Edge-Case Tests**: Add corresponding test cases in [`tests/`](tests/) covering both success paths and failure injection paths (e.g., using `FailingJobStore`).
-2. **Property Tests**: If manipulating time, intervals, or state transformations, add a `proptest!` block in [`tests/property_tests.rs`](tests/property_tests.rs).
-3. **Mutation Testing**: Ensure any logic assertions are tight enough that `cargo mutants` cannot introduce undetected mutations.
+2. **Doc-Tests**: All public functions and structs must include runnable doc-tests (`cargo test --doc`).
+3. **Property Tests**: If manipulating time, intervals, or state transformations, add a `proptest!` block in [`tests/property_tests.rs`](tests/property_tests.rs).
+4. **Mutation Testing**: Ensure any logic assertions are tight enough that `cargo mutants` cannot introduce undetected mutations.
 
 ---
 
@@ -79,10 +81,13 @@ cargo clippy --all-targets --all-features -- -D warnings
 # 3. Run all tests
 cargo test
 
-# 4. (Optional / recommended if available) Isolated process tests
+# 4. Run all documentation tests
+cargo test --doc
+
+# 5. (Optional / recommended if available) Isolated process tests
 cargo nextest run
 
-# 5. Dependency security & policy scan
+# 6. Dependency security & policy scan
 cargo deny check
 ```
 

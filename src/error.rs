@@ -40,4 +40,8 @@ pub enum SchedulerError {
     /// An internal channel communication error.
     #[error("Internal communication channel error: {0}")]
     ChannelError(String),
+
+    /// Invalid configuration parameter.
+    #[error("Invalid configuration: {0}")]
+    InvalidConfig(String),
 }

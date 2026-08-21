@@ -396,3 +396,33 @@ async fn test_concurrent_job_registration() {
 
     scheduler.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn test_scheduler_builder_and_try_new() {
+    use rust_best_practices::scheduler::SchedulerBuilder;
+
+    // Test successful builder with rate_limiter
+    let (scheduler, runner) = SchedulerBuilder::new()
+        .max_concurrent_jobs(4)
+        .rate_limiter(5, 10.0)
+        .unwrap()
+        .build();
+
+    scheduler.start(runner).await.unwrap();
+
+    let job_id = scheduler
+        .add_job(JobSchedule::Immediate, || async { Ok(()) })
+        .await
+        .unwrap();
+
+    sleep(Duration::from_millis(50)).await;
+    let status = scheduler.get_job_status(job_id).await.unwrap().unwrap();
+    assert_eq!(status, JobStatus::Completed);
+
+    scheduler.shutdown().await.unwrap();
+
+    // Test invalid rate limiter configurations in try_new
+    assert!(RateLimiter::try_new(0, 10.0).is_err());
+    assert!(RateLimiter::try_new(5, -1.0).is_err());
+    assert!(RateLimiter::try_new(5, f64::NAN).is_err());
+}

@@ -8,6 +8,16 @@ use std::time::Instant;
 use uuid::Uuid;
 
 /// Unique identifier for a Job.
+///
+/// # Examples
+///
+/// ```rust
+/// use rust_best_practices::job::JobId;
+///
+/// let id1 = JobId::new();
+/// let id2 = JobId::new();
+/// assert_ne!(id1, id2);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct JobId(Uuid);
 
@@ -85,6 +95,17 @@ pub struct JobMetadata {
 
 impl JobMetadata {
     /// Creates a new `JobMetadata` instance.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rust_best_practices::job::{JobId, JobMetadata, JobSchedule, JobStatus};
+    ///
+    /// let id = JobId::new();
+    /// let meta = JobMetadata::new(id, JobSchedule::Immediate);
+    /// assert_eq!(meta.status, JobStatus::Pending);
+    /// assert_eq!(meta.run_count, 0);
+    /// ```
     #[must_use]
     pub fn new(id: JobId, schedule: JobSchedule) -> Self {
         let next_run_time = match &schedule {

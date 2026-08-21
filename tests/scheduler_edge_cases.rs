@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tokio::time::sleep;
 
-use rust_test::{
+use rust_best_practices::{
     InMemoryJobStore, JobId, JobMetadata, JobSchedule, JobStatus, JobStore, RateLimiter, Scheduler,
     SchedulerError,
 };

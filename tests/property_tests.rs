@@ -1,5 +1,5 @@
 use proptest::prelude::*;
-use rust_test::{JobId, JobMetadata, JobSchedule, JobStatus};
+use rust_best_practices::{JobId, JobMetadata, JobSchedule, JobStatus};
 use std::time::Duration;
 
 proptest! {

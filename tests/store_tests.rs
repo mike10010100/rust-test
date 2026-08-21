@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
 
-use rust_test::{
+use rust_best_practices::{
     InMemoryJobStore, JobId, JobMetadata, JobSchedule, JobStatus, JobStore, SchedulerError,
 };
 

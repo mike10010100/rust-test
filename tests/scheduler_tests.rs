@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
 
-use rust_test::{JobSchedule, JobStatus, RateLimiter, Scheduler};
+use rust_best_practices::{JobSchedule, JobStatus, RateLimiter, Scheduler};
 
 #[tokio::test]
 async fn test_immediate_job_execution() {
@@ -331,7 +331,10 @@ async fn test_shutdown_timeout_aborts_jobs() {
         .await;
 
     assert!(
-        matches!(shutdown_res, Err(rust_test::SchedulerError::Timeout)),
+        matches!(
+            shutdown_res,
+            Err(rust_best_practices::SchedulerError::Timeout)
+        ),
         "Expected Timeout error, got {:?}",
         shutdown_res
     );

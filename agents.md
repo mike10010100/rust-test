@@ -64,6 +64,7 @@ Whenever you introduce a new feature or modify existing logic:
 2. **Doc-Tests**: All public functions and structs must include runnable doc-tests (`cargo test --doc`).
 3. **Property Tests**: If manipulating time, intervals, or state transformations, add a `proptest!` block in [`tests/property_tests.rs`](tests/property_tests.rs).
 4. **Mutation Testing**: Ensure any logic assertions are tight enough that `cargo mutants` cannot introduce undetected mutations.
+5. **Formal Verification (Verus / Kani)**: For cryptographic, state-machine, or single-use token logic, write formal specifications. Use **Verus** for contract-driven deductive verification (`requires`, `ensures`). If writing Kani model checking harnesses (`#[kani::proof]`), **never write unreached/vacuous assumptions** — always add `kani::cover!()` reachability checks and verify with mutation tests.
 
 ---
 

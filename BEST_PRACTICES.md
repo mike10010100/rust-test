@@ -258,17 +258,93 @@ graph TD
 
 While `#![forbid(unsafe_code)]` and strict compiler lints guarantee memory safety and panic-freedom, security-critical components (such as cryptographic token verifiers, single-use state stores, and circular indexers) often require **mathematical proof of functional correctness**.
 
-### A. Testing Hierarchy: Unit vs. Property vs. Formal Model Checking
+### A. Verification Hierarchy: Deductive Verification vs. Model Checking vs. Property Testing
 
-| Verification Level | Tool | When to Use | What It Proves |
+| Verification Level | Tool | Primary Role | What It Proves & LLM Interaction |
 | :--- | :--- | :--- | :--- |
 | **Unit Testing** | `cargo test` | Deterministic cases, API ergonomics | Specific input/output pairs behave as expected. |
 | **Property-Based Testing** | `proptest` | Algebraic laws, duration conversions, scheduling bounds | Invariants hold across thousands of randomly sampled inputs. |
 | **Mutation Testing** | `cargo mutants` | Test suite quality evaluation | Injected bugs cause tests to fail (prevents tautological tests). |
-| **Formal Model Checking** | `cargo-kani` | Single-use tokens, cryptographic encoders, state machines | **Exhaustively proves** absence of panics, overflows, and invariant violations across *all* possible inputs within bounded execution depths. |
+| **Deductive Verification** | [**Verus**](https://github.com/verus-lang/verus) | State machines, cryptographic bounds, token lifecycles | **Forces contract-driven code generation.** Mathematical proofs verified directly against function bodies using Hoare logic & SMT (Z3). Eliminates vacuous proofs. |
+| **Bounded Model Checking** | [**Kani**](https://model-checking.github.io/kani/) | Bit-level manipulation, bounded unrolling, unsafe/FFI | Exhaustively checks execution paths within fixed loop/recursion bounds via SAT/SMT (CBMC). Requires strict anti-vacuity defenses. |
 
-### B. Writing Kani Proof Harnesses (`#[kani::proof]`)
-For critical algorithms, write dedicated verification harnesses:
+---
+
+### B. Why Verus Forces LLMs to Write Superior Code (and the Kani Vacuous Proof Trap)
+
+When using AI coding assistants and LLMs for high-assurance Rust development:
+
+#### 1. The Bounded Model Checking (Kani) Vacuous Proof Trap
+Bounded model checkers (like Kani) operate via external proof harnesses (`#[kani::proof]`). When an LLM generates a proof harness, it can easily introduce **vacuous proofs**:
+- An overly restrictive or contradictory assumption (e.g., `kani::assume(condition)` where condition cannot be satisfied) renders the theorem vacuously true ($P \implies Q$ is mathematically true whenever $P$ is false).
+- The model checker reports "Verification Succeeded" with 100% green checks, yet **no actual code execution was verified**.
+- If Kani is used, you **must** enforce anti-vacuity requirements:
+  1. Mandatory `kani::cover!()` statements to prove unreachable assumptions are not present.
+  2. Validation via `cargo mutants` to prove that introducing artificial bugs in the implementation causes the Kani harness to fail.
+
+#### 2. Why Verus Forces Superior Code Architecture
+[**Verus**](https://github.com/verus-lang/verus) is a deductive verification tool for Rust developed by Microsoft Research, Carnegie Mellon University, and VMware:
+- **Contract-Driven Specifications**: Functions specify explicit mathematical contracts directly on the code using `requires` (preconditions), `ensures` (postconditions), `invariant` (loop invariants), and `decreases` (termination proofs).
+- **Direct Modular Verification**: Because contracts are verified directly against the function body itself (not in a disconnected harness), an LLM cannot hide behind vacuous harness assumptions.
+- **Architectural Discipline**: To satisfy the SMT solver, the LLM is forced to:
+  1. Structure functions cleanly with explicit domain bounds and defensive branches.
+  2. Handle every possible corner case in the implementation.
+  3. Formulate precise, sound algebraic abstractions without hidden edge-case bugs.
+
+---
+
+### C. Writing Verus Contracts & Specifications
+
+In Verus-verified modules, annotate security-critical methods with mathematical pre/post-conditions:
+
+```rust
+use vstd::prelude::*;
+
+verus! {
+
+/// Proof-verified single-use token lifecycle
+pub struct VerifiedTokenStore {
+    pub active_tokens: Map<Seq<u8>, u64>,
+}
+
+impl VerifiedTokenStore {
+    /// Consumes a token atomically. Proves that a consumed token can never be retrieved again.
+    pub fn consume_token(&mut self, token_hash: Seq<u8>) -> (res: Option<u64>)
+        requires
+            old(self).active_tokens.dom().finite(),
+        ensures
+            // If the token existed, return its timestamp and remove it from active set
+            old(self).active_tokens.contains_key(token_hash) ==> (
+                res == Some(old(self).active_tokens[token_hash]) &&
+                !self.active_tokens.contains_key(token_hash) &&
+                self.active_tokens.dom() =~= old(self).active_tokens.dom().remove(token_hash)
+            ),
+            // If the token did not exist, return None and leave store unchanged
+            !old(self).active_tokens.contains_key(token_hash) ==> (
+                res == None &&
+                self.active_tokens =~= old(self).active_tokens
+            ),
+    {
+        // Implementation checked by SMT solver against pre/post-conditions
+        if self.active_tokens.contains_key(token_hash) {
+            let ts = self.active_tokens[token_hash];
+            self.active_tokens = self.active_tokens.remove(token_hash);
+            Some(ts)
+        } else {
+            None
+        }
+    }
+}
+
+} // verus!
+```
+
+---
+
+### D. Writing Kani Model Checking Harnesses with Anti-Vacuity Proofs
+
+When using Kani for bounded model checking, always include reachability coverage checks (`kani::cover`):
+
 ```rust
 #[cfg(kani)]
 #[kani::proof]
@@ -276,6 +352,9 @@ fn verify_single_use_state_consumption() {
     let store = OAuthStateStore::new();
     let key: String = kani::any();
     let session: OAuthSessionState = kani::any();
+
+    // Anti-vacuity check: ensure symbolic key meets valid test bounds
+    kani::assume(!key.is_empty() && key.len() < 128);
 
     store.insert(key.clone(), session);
 
@@ -286,6 +365,10 @@ fn verify_single_use_state_consumption() {
     // Second take MUST evaluate to None under all circumstances
     let second = store.take(&key);
     kani::assert(second.is_none(), "Single-use state must never be consumed twice");
+
+    // MANDATORY Anti-Vacuity Gate: prove this state was actually reached and verified
+    kani::cover!(first.is_some() && second.is_none());
 }
 ```
+
 

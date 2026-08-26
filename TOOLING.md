@@ -40,9 +40,23 @@ Use these commands to run quality checks on your local machine:
 
 ---
 
-## 3. Evaluated & Excluded Tools
+## 3. High-Assurance & Formal Verification Tools
 
-We evaluated the following tools but chose not to incorporate them into the active quality pipeline for the reasons detailed below:
+For mission-critical components, cryptographic encoders, or security-sensitive state machines, incorporate formal verification:
+
+### `cargo-kani` (Formal Model Checker)
+* **What it is**: [Kani](https://model-checking.github.io/kani/) is a formal verification model checker developed by Amazon / AWS that uses SMT solving (CBMC) to mathematically prove the functional correctness of standard Rust code.
+* **When to use**:
+  - Proving mathematical invariants on pure data structures (e.g. lock-free buffers, circular queues, single-use state stores).
+  - Proving freedom from arithmetic overflow, underflow, and out-of-bounds indexing in indexing and hashing algorithms.
+  - Proving that security-critical token and cryptographic verifier checks have zero false positives or length-extension bypasses.
+* **Usage**: Write verification harnesses using `#[kani::proof]` in `tests/kani_harnesses.rs` and run `cargo kani`.
+
+---
+
+## 4. Evaluated & Excluded Tools
+
+We evaluated the following tools but chose not to incorporate them into the default standard CI loop for the reasons detailed below:
 
 ### `miri` (MIR Interpreter)
 * **Rationale for Exclusion**: Miri checks for undefined behavior (UB) and memory aliasing violations. Since we enforce `#![forbid(unsafe_code)]`, the compiler already guarantees safe memory operations. While Miri can catch deadlocks, it runs code thousands of times slower, making it impractical for standard CI/CD loops.
@@ -52,7 +66,7 @@ We evaluated the following tools but chose not to incorporate them into the acti
 * **Rationale for Exclusion**: Tarpaulin is a line-coverage tool that relies on Linux-specific `ptrace` system calls. This makes it platform-dependent and prone to crashing in Docker containers or containerized CI agents. `cargo-llvm-cov` is preferred as it is cross-platform, faster, and provides LLVM source-level accuracy.
 
 ### `cargo-fuzz` (Fuzz Testing)
-* **Rationale for Exclusion**: Fuzz testing is designed to feed random byte streams to string or binary parsers to detect boundary panics. Because the task scheduler's APIs are strongly typed (taking structures, durations, and closures) and do not parse raw data inputs, fuzzer mutational algorithms are ineffective. Property testing (`proptest`) provides structured, typed boundary coverage.
+* **Rationale for Exclusion**: Fuzz testing is designed to feed random byte streams to string or binary parsers to detect boundary panics. Because strongly typed APIs take structured types, durations, and closures rather than raw unvalidated bytes, fuzzer mutational algorithms are ineffective. Property testing (`proptest`) provides structured, typed boundary coverage.
 
 ### `cargo-semver-checks` (API Version Control)
 * **Rationale for Exclusion**: Checks API changes against published crates on crates.io to prevent SemVer breakage. This is essential for public, open-source libraries, but unnecessary for internal application projects or private crates.
@@ -62,3 +76,4 @@ We evaluated the following tools but chose not to incorporate them into the acti
 
 ### `cargo-geiger` (Unsafe Scoping)
 * **Rationale for Exclusion**: Geiger counts unsafe blocks in a crate and its dependencies. Since unsafe code is forbidden in our own crate, Geiger is redundant; dependency-level vulnerabilities are already caught by `cargo-deny` and `cargo-audit`.
+

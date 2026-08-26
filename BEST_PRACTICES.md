@@ -251,3 +251,41 @@ graph TD
 2. **Synchronous Mutex (`parking_lot::Mutex` / `std::sync::Mutex`)**: Best for protecting fast in-memory data structures (HashMaps, vectors) where lock duration is < 1µs.
 3. **Async Mutex (`tokio::sync::Mutex`)**: Only use when the lock guard must remain held while executing an `.await` future.
 4. **Channels (`tokio::sync::mpsc`)**: Best for actor patterns, message passing, and decoupled worker queues.
+
+---
+
+## 9. Formal Verification & Mathematical Invariant Proving
+
+While `#![forbid(unsafe_code)]` and strict compiler lints guarantee memory safety and panic-freedom, security-critical components (such as cryptographic token verifiers, single-use state stores, and circular indexers) often require **mathematical proof of functional correctness**.
+
+### A. Testing Hierarchy: Unit vs. Property vs. Formal Model Checking
+
+| Verification Level | Tool | When to Use | What It Proves |
+| :--- | :--- | :--- | :--- |
+| **Unit Testing** | `cargo test` | Deterministic cases, API ergonomics | Specific input/output pairs behave as expected. |
+| **Property-Based Testing** | `proptest` | Algebraic laws, duration conversions, scheduling bounds | Invariants hold across thousands of randomly sampled inputs. |
+| **Mutation Testing** | `cargo mutants` | Test suite quality evaluation | Injected bugs cause tests to fail (prevents tautological tests). |
+| **Formal Model Checking** | `cargo-kani` | Single-use tokens, cryptographic encoders, state machines | **Exhaustively proves** absence of panics, overflows, and invariant violations across *all* possible inputs within bounded execution depths. |
+
+### B. Writing Kani Proof Harnesses (`#[kani::proof]`)
+For critical algorithms, write dedicated verification harnesses:
+```rust
+#[cfg(kani)]
+#[kani::proof]
+fn verify_single_use_state_consumption() {
+    let store = OAuthStateStore::new();
+    let key: String = kani::any();
+    let session: OAuthSessionState = kani::any();
+
+    store.insert(key.clone(), session);
+
+    // First take must return Some
+    let first = store.take(&key);
+    kani::assert(first.is_some(), "First take must succeed");
+
+    // Second take MUST evaluate to None under all circumstances
+    let second = store.take(&key);
+    kani::assert(second.is_none(), "Single-use state must never be consumed twice");
+}
+```
+
